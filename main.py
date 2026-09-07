@@ -2,22 +2,36 @@ import urllib.request
 import json
 import time
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
+# --- Render Port Dinleyici (Web Service Kontrolü İçin) ---
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"BIST Botu Aktif!")
+
+def run_web_server():
+    server_address = ('', 10000)
+    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+    httpd.serve_forever()
+
+# Web sunucusunu arka planda başlat
+threading.Thread(target=run_web_server, daemon=True).start()
+
+# --- Telegram Bot Ayarları ---
 TELEGRAM_BOT_TOKEN = "8885666495:AAHG8OPjLPp1LdYO13xp7pW8dRpM2StTU-U"
 TELEGRAM_CHAT_ID = "8766074185"
 
-# BIST Hisseleri, BYF'ler ve Kuruşlu Hisseler (100+ Enstrüman)
 TUM_BIST_LISTESI = [
-    # Ana Hisseler
     "THYAO.IS", "GARAN.IS", "EREGL.IS", "ASELS.IS", "SISE.IS", "KCHOL.IS", "TUPRS.IS", "AKBNK.IS",
     "YKBNK.IS", "SAHOL.IS", "BIMAS.IS", "ISCTR.IS", "PETKM.IS", "EKGYO.IS", "HALKB.IS", "VAKBN.IS",
     "HEKTS.IS", "SASA.IS", "KONTR.IS", "SMRTG.IS", "ODAS.IS", "GUBRF.IS", "ASTOR.IS", "ALARK.IS",
     "TOASO.IS", "FROTO.IS", "TTKOM.IS", "TCELL.IS", "PGSUS.IS", "KOZAL.IS", "KOZAA.IS", "ENKAI.IS",
     "OYAKC.IS", "CIMSA.IS", "DOHOL.IS", "ARCLK.IS", "TAVHL.IS", "SOKM.IS", "MAVI.IS", "BCHIP.IS",
     "KCAER.IS", "CANTE.IS", "GESAN.IS", "EUPWR.IS", "SDTTR.IS", "MIATK.IS", "REEDR.IS", "BOBET.IS",
-    # Borsa Yatırım Fonları (BYF / ETF)
     "ZGOLD.IS", "USDTR.IS", "GMSTR.IS", "GLDTR.IS", "ZREIT.IS", "Z30EA.IS", "ZUSDE.IS",
-    # Kuruşlu ve Düşük Fiyatlı Hisseler
     "IEYHO.IS", "METRO.IS", "EUHOL.IS", "AVOD.IS", "NTHOL.IS", "TMSN.IS", "MERSN.IS", "DAGHL.IS",
     "GLRYH.IS", "SAMAT.IS", "TSPOR.IS", "BJKAS.IS", "GSRAY.IS", "FENER.IS", "IHGVT.IS", "IHYAY.IS",
     "USAK.IS", "KRTEK.IS", "SKBNK.IS", "TSKB.IS", "CEMAS.IS", "ICBCT.IS", "VKGYO.IS", "PEKGY.IS",
@@ -64,9 +78,7 @@ def detayli_hisse_fon_analiz(kod):
             
             ort_20 = sum(fiyatlar) / len(fiyatlar)
             en_yuksek = max(fiyatlar)
-            en_dusuk = min(fiyatlar)
             
-            # --- 14 Günlük RSI Hesaplama ---
             farklar = [fiyatlar[i] - fiyatlar[i-1] for i in range(1, len(fiyatlar))]
             kazanclar = [f for f in farklar if f > 0]
             kayiplar = [-f for f in farklar if f < 0]
@@ -77,18 +89,15 @@ def detayli_hisse_fon_analiz(kod):
             rs = ort_kazanc / ort_kayip
             rsi = 100 - (100 / (1 + rs))
 
-            # --- Gelişmiş Skorlama ve Risk Yönetimi ---
             skor = 50
             if son_fiyat > ort_20: skor += 15
             if gunluk_degisim > 0: skor += 10
             if hacimler and hacimler[-1] > (sum(hacimler)/len(hacimler)): skor += 15
             if son_fiyat >= en_yuksek * 0.95: skor += 10
 
-            # Stop-Loss (Kayıp Önleme) Seviyesi (%3 Zarar Kes)
             stop_loss = son_fiyat * 0.97
-            hedef_fiyat = son_fiyat * 1.08 # %8 Tahmini Kâr Hedefi
+            hedef_fiyat = son_fiyat * 1.08
 
-            # --- Tahmini Zaman / Vade Penceresi Hesaplama ---
             if rsi < 35 and gunluk_degisim > 1:
                 tahmini_vade = "⚡ **Çok Kısa Vade (1 - 3 Gün İçinde)**"
             elif rsi >= 35 and rsi <= 60 and son_fiyat > ort_20:
@@ -98,7 +107,6 @@ def detayli_hisse_fon_analiz(kod):
             else:
                 tahmini_vade = "⚠️ **Belirsiz / Riski Yüksek (Beklemede)**"
 
-            # --- Risk & Düşüş Analizi ---
             if rsi > 70:
                 dusse_risk_mesaji = "⚠️ **YÜKSEK DÜŞÜŞ RİSKİ!** (Aşırı Alımda, Kâr Satışı Gelebilir)"
                 skor -= 20
@@ -108,7 +116,6 @@ def detayli_hisse_fon_analiz(kod):
             else:
                 dusse_risk_mesaji = "🟢 **Düşüş Riski Düşük** (Trend Stabil)"
 
-            # Tür Tespiti
             if "GOLD" in kod or "TR" in kod or "Z30" in kod or "ZUS" in kod:
                 tur = "Borsa Fonu (ETF)"
             elif son_fiyat < 10.0:
@@ -151,7 +158,7 @@ def detayli_hisse_fon_analiz(kod):
         return None
 
 if __name__ == "__main__":
-    BEKLEME_SURESI = 300  # 5 Dakikada bir çalışır
+    BEKLEME_SURESI = 300
     
     while True:
         kullanilabilir_liste = [h for h in TUM_BIST_LISTESI if h not in SON_GONDERILENLER]
