@@ -89,11 +89,11 @@ def detayli_hisse_fon_analiz(kod):
             hedef_fiyat = son_fiyat * 1.08 # %8 Tahmini Kâr Hedefi
 
             # --- Tahmini Zaman / Vade Penceresi Hesaplama ---
-            if rsi < 35 ve gunluk_degisim > 1:
+            if rsi < 35 and gunluk_degisim > 1:
                 tahmini_vade = "⚡ **Çok Kısa Vade (1 - 3 Gün İçinde)**"
-            elif rsi >= 35 ve rsi <= 60 ve son_fiyat > ort_20:
+            elif rsi >= 35 and rsi <= 60 and son_fiyat > ort_20:
                 tahmini_vade = "📈 **Kısa/Orta Vade (3 - 10 Gün İçinde)**"
-            elif rsi > 60 ve rsi <= 70:
+            elif rsi > 60 and rsi <= 70:
                 tahmini_vade = "⏳ **Orta Vade (1 - 3 Hafta İçinde)**"
             else:
                 tahmini_vade = "⚠️ **Belirsiz / Riski Yüksek (Beklemede)**"
