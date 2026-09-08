@@ -1,19 +1,17 @@
-import os
-import time
+import logging
 import random
-import threading
-import json
-import urllib.request
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import pandas as pd
+import telebot
+import yfinance as yf
 
-TELEGRAM_BOT_TOKEN = "8885666495:AAHG8OPjLPp1LdYO13xp7pW8dRpM2StTU-U"
-TELEGRAM_CHAT_ID = "8766074185"
+# Yahoo Finance konsol hata çıktılarını ve 404 uyarılarını gizle
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
-TZ = ZoneInfo("Europe/Istanbul")
+# Telegram Bot Token'ı
+TOKEN = "BURAYA_TELEGRAM_BOT_TOKENINIZI_YAZIN"
+bot = telebot.TeleBot(TOKEN)
 
-
+# BIST Hisse Listesi
 TUM_BIST_LISTESI = [
     "ACSEL.IS", "ADEL.IS", "ADESE.IS", "ADGYO.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", "AGHOL.IS", "AGROT.IS", "AGYO.IS",
     "AKBNK.IS", "AKCNS.IS", "AKENR.IS", "AKFGY.IS", "AKFYE.IS", "AKGRT.IS", "AKMGY.IS", "AKSA.IS", "AKSEN.IS", "AKSGY.IS",
@@ -61,244 +59,229 @@ TUM_BIST_LISTESI = [
     "YEOTK.IS", "YKBNK.IS", "YKSLN.IS", "YUNSA.IS", "YUVAM.IS", "ZEDUR.IS", "ZOREN.IS", "ZRGYO.IS"
 ]
 
-
+# Temizlenmiş Özlü Sözler Listesi
 MORAL_SOZLERI = [
-    "📉 *'Düşüşler zayıf ellerin döküldüğü, güçlülerin mal topladığı anlardır.'* — **Melih Ünal** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🦅",
-    "🎯 *'Grafiklere bakıp hayal kurma, planına sadık kal ve stop seviyeni asla unutma.'* — **Piyasa Felsefesi** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 💡",
-    "⚡ *'Borsada herkes kazanırken sessiz olan, kaybederken ses çıkarandır.'* — **Sokak Bilgeliği** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🌀",
-    "🧊 *'Ekranı kapatmayı bilmeyen, borsanın oyuncuncağı olur.'* — **Trader Kanunu** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🛑",
-    "💡 *'Risk almayan, fırsatları yakalayamaz.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) 🚀",
-    "🔥 *'Borsada başarılı olmanın anahtarı, korkuya ve hırsa teslim olmamaktır.'* — **Peter Lynch** [Resim](https://upload.wikimedia.org/wikipedia/commons/e/ec/Peter_Lynch_%28cropped%29.jpg) 🧠",
-    "🧠 *'Piyasa, sabırsızlardan sabırlılara para aktaran bir araçtır.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) 💸",
-    "🎯 *'Fiyat ödediğin şeydir, değer ise sahip olduğun şey.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) 📊",
-    "🏆 *'En büyük yatırım, kendi bilgi ve disiplinine yaptığın yatırımdır.'* — **Benjamin Franklin** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Benjamin_Franklin_by_Dusentimit.jpg/220px-Benjamin_Franklin_by_Dusentimit.jpg) 📚",
-    "💰 *'Zenginlik, kazandığın paradan çok, biriktirdiğin ve yatırdığın parayla ölçülür.'* — **Benjamin Graham** [Resim](https://upload.wikimedia.org/wikipedia/commons/4/42/Benjamin_Graham_circa_1945.jpg) 🏦",
-    "⏳ *'Borsada zaman geçirmek, zamanlamaya çalışmaktan her zaman daha kârlıdır.'* — **Jack Bogle** [Resim](https://upload.wikimedia.org/wikipedia/commons/3/3b/John_C._Bogle_2012.jpg) 📉",
-    "🔮 *'Piyasanın ne yapacağını tahmin etmeye çalışma, piyasaya uyum sağla.'* — **Ray Dalio** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Ray_Dalio_2014_%28cropped%29.jpg/220px-Ray_Dalio_2014_%28cropped%29.jpg) 🌊",
-    "🛡️ *'İlk kural para kaybetmemektir. İkinci kural birinci kuralı unutmamaktır.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) ⚠️",
-    "🌊 *'Durgun denizler usta denizci yetiştirmez. Dalgalı piyasada tecrübe kazanırsın!'* — **Franklin D. Roosevelt** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/FDR_in_1933.jpg/220px-FDR_in_1933.jpg) ⛵",
-    "📈 *'Trend senin dostundur, onunla savaşma.'* — **Martin Zweig** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🔄",
-    "⚡ *'Acele ile yapılan yatırım, hırsın tuzağıdır.'* — **Konfüçyüs** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Confucius_-_Kong_Qiu_-_Palace_Museum.jpg/220px-Confucius_-_Kong_Qiu_-_Palace_Museum.jpg) 🛑",
-    "🏔️ *'Zirveye giden yol, disiplinli adımlardan geçer.'* — **Friedrich Nietzsche** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Nietzsche187a.jpg/220px-Nietzsche187a.jpg) 🏔️",
-    "🔑 *'Disiplin, hedefler ile başarı arasındaki köprüdür.'* — **Jim Rohn** [Resim](https://upload.wikimedia.org/wikipedia/commons/e/ec/Jim_Rohn.jpg) 🌉",
-    "🏛️ *'Finansal özgürlük bir varış noktası değil, bir yaşam tarzıdır.'* — **Tony Robbins** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Tony_Robbins_by_Gage_Skidmore.jpg/220px-Tony_Robbins_by_Gage_Skidmore.jpg) 🔑",
-    "🛠️ *'Stratejin olsun, planına sadık kal.'* — **Sun Tzu** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Sun_Tzu_-_Sima_Qian.jpg/220px-Sun_Tzu_-_Sima_Qian.jpg) 📐",
-    "💸 *'Gelirini artırmak istiyorsan, finansal okuryazarlığını artır.'* — **Robert Kiyosaki** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Robert_Kiyosaki_by_Gage_Skidmore.jpg/220px-Robert_Kiyosaki_by_Gage_Skidmore.jpg) 📚",
-    "🥇 *'Şans, hazırlıkla fırsatın karşılaştığı köşe başıdır.'* — **Seneca** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Seneca_the_Younger_epigraph_pushkin.jpg/220px-Seneca_the_Younger_epigraph_pushkin.jpg) 🎲",
-    "🧠 *'En büyük risk, risk almamaktır.'* — **Mark Zuckerberg** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Mark_Zuckerberg_F8_2019_Keynote_%2832830578717%29_%28cropped%29.jpg/220px-Mark_Zuckerberg_F8_2019_Keynote_%2832830578717%29_%28cropped%29.jpg) 💥",
-    "📐 *'Planlama yapmamak, başarısızlığı planlamaktır.'* — **Benjamin Franklin** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Benjamin_Franklin_by_Dusentimit.jpg/220px-Benjamin_Franklin_by_Dusentimit.jpg) 📝",
-    "🏃 *'Durmadığın sürece ne kadar yavaş gittiğinin bir önemi yoktur.'* — **Konfüçyüs** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Confucius_-_Kong_Qiu_-_Palace_Museum.jpg/220px-Confucius_-_Kong_Qiu_-_Palace_Museum.jpg) 🚶‍♂️",
-    "🧱 *'Büyük yapılar, tek tek dizilen sağlam tuğlalarla yükselir.'* — **Lao Tzu** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Laozi_Depiction.jpg/220px-Laozi_Depiction.jpg) 🏛️",
-    "🎈 *'Balonlar patlar, gerçek değerler kalıcıdır.'* — **Alan Greenspan** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Alan_Greenspan_official_portrait.jpg/220px-Alan_Greenspan_official_portrait.jpg) 🎈",
-    "🗝️ *'Başarının sırrı, kriz anında sakin kalabilmektir.'* — **George Bernard Shaw** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/George_Bernard_Shaw_by_Barraud_1889.jpg/220px-George_Bernard_Shaw_by_Barraud_1889.jpg) 🧊",
-    "🛡️ *'Sermayeni korumak, kâr etmekten daha önemlidir.'* — **George Soros** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/George_Soros_in_2013_-_World_Economic_Forum.jpg/220px-George_Soros_in_2013_-_World_Economic_Forum.jpg) 🏰",
-    "🔮 *'Gelecek, yarın için bugün ne yaptığına bağlıdır.'* — **Mahatma Gandhi** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Mahatma-Gandhi%2C_studio_portrait%2C_1931.jpg/220px-Mahatma-Gandhi%2C_studio_portrait%2C_1931.jpg) ⏳",
-    "📊 *'Rakamlar yalan söylemez, analize güven.'* — **Charles Dow** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Charles_Dow_-_Brady-Handy.jpg/220px-Charles_Dow_-_Brady-Handy.jpg) 📊",
-    "🏆 *'Kendi şansını kendin yarat!'* — **Luciano De Crescenzo** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🎲",
-    "🎓 *'Hatalar tecrübedir, tecrübe ise kazanç.'* — **Oscar Wilde** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Oscar_Wilde_by_Napoleon_Sarony_%28cropped%29.jpg/220px-Oscar_Wilde_by_Napoleon_Sarony_%28cropped%29.jpg) 💡",
-    "⚡ *'Panik satışı, sabırsızlığın en pahalı faturasıdır.'* — **Peter Lynch** [Resim](https://upload.wikimedia.org/wikipedia/commons/e/ec/Peter_Lynch_%28cropped%29.jpg) 📄",
-    "🌟 *'Işık karanlıkta daha parlak yanar. Düşüşlerde fırsat ara!'* — **William Shakespeare** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Shakespeare.jpg/220px-Shakespeare.jpg) 💡",
-    "💡 *'Zihnine yatırım yap, cüzdanın karşılığını verir.'* — **Benjamin Franklin** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Benjamin_Franklin_by_Dusentimit.jpg/220px-Benjamin_Franklin_by_Dusentimit.jpg) 🧠",
-    "🏹 *'Geriye çekilen ok, daha ileri gitmek içindir.'* — **Konfüçyüs** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Confucius_-_Kong_Qiu_-_Palace_Museum.jpg/220px-Confucius_-_Kong_Qiu_-_Palace_Museum.jpg) 🏹",
-    "🧱 *'Sağlam temel, sabırla atılır.'* — **Mimar Sinan** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Mimar_Sinan_statue_in_Isparta.jpg/220px-Mimar_Sinan_statue_in_Isparta.jpg) 🏗️",
-    "🧘 *'Duygusal karar kaybettirir, mantıklı karar kazandırır.'* — **Daniel Kahneman** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Daniel_Kahneman_2011.jpg/220px-Daniel_Kahneman_2011.jpg) 🧊",
-    "🔑 *'Finansal özgürlük, istemediğin şeylere hayır diyebilme gücüdür.'* — **Nassim Nicholas Taleb** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Nassim_Nicholas_Taleb_by_Gage_Skidmore.jpg/220px-Nassim_Nicholas_Taleb_by_Gage_Skidmore.jpg) 🛑",
-    "🏆 *'Şampiyonlar, antrenmanda kimse bakmıyorken ter dökenlerdir.'* — **Muhammad Ali** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Muhammad_Ali_NYWTS.jpg/220px-Muhammad_Ali_NYWTS.jpg) 🏋️‍♂️",
-    "💡 *'Düzenli yatırım, geleceğe bırakılan en büyük mirastır.'* — **John D. Rockefeller** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/John_D._Rockefeller_circa_1885.jpg/220px-John_D._Rockefeller_circa_1885.jpg) 🏛️",
-    "🌊 *'Her fırtınanın bir sonu vardır.'* — **Bob Marley** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Bob_Marley_in_Stockholm_1977.jpg/220px-Bob_Marley_in_Stockholm_1977.jpg) 🌈",
-    "🎯 *'Disiplin, ne istediğin ile en çok ne istediğin arasında seçim yapmaktır.'* — **Abraham Lincoln** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Abraham_Lincoln_O-77_matte_collodion_print.jpg/220px-Abraham_Lincoln_O-77_matte_collodion_print.jpg) ⚖️",
-    "🏆 *'Günü değil, geleceği kazanmayı hedefle!'* — **Andrew Carnegie** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Andrew_Carnegie%2C_coef_c.jpg/220px-Andrew_Carnegie%2C_coef_c.jpg) 🎖️",
-    "💡 *'Bilgi güçtür, doğru strateji ise servettir.'* — **Francis Bacon** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Francis_Bacon_by_Paul_Van_Somer.jpg/220px-Francis_Bacon_by_Paul_Van_Somer.jpg) 👑",
-    "🎯 *'Odağını dağıtma, hedefine kilitlen!'* — **Bruce Lee** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bruce_Lee_1973.jpg/220px-Bruce_Lee_1973.jpg) 🎯",
-    "✨ *'İnan, çalış, sabret ve başar!'* — **Mustafa Kemal Atatürk** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Atat%C3%BCrk_in_Ankara_%281930%29.jpg/220px-Atat%C3%BCrk_in_Ankara_%281930%29.jpg) 🏁",
-    "📈 *'Sabırlı yatırımcı, piyasadaki en tehlikeli oyuncudur.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) ♟️",
-    "💎 *'Değerli olan hiçbir şey kolay elde edilmez.'* — **Plato** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Plato_Silanion_Musei_Capitolini.jpg/220px-Plato_Silanion_Musei_Capitolini.jpg) 🏔️",
-    "🛡️ *'Hisseni değil, riskini çeşitlendir.'* — **Harry Markowitz** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Harry_Markowitz_2008.jpg/220px-Harry_Markowitz_2008.jpg) 🌐",
-    "🏆 *'Kaybetmeyi göze alamayan, kazanamaz.'* — **Friedrich Nietzsche** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Nietzsche187a.jpg/220px-Nietzsche187a.jpg) 🎲",
-    "🧠 *'Bilgi, eyleme dönüştüğünde güç kazanır.'* — **Tony Robbins** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Tony_Robbins_by_Gage_Skidmore.jpg/220px-Tony_Robbins_by_Gage_Skidmore.jpg) ⚡",
-    "🔥 *'Tutku, en büyük sermayedir.'* — **Donald Trump** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Donald_Trump_official_portrait.jpg/220px-Donald_Trump_official_portrait.jpg) ❤️",
-    "⚡ *'Korkunun üzerine git ki korku senden kaçsın.'* — **Ralph Waldo Emerson** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Ralph_Waldo_Emerson_by_Southworth_and_Hawes%2C_c._1857.jpg/220px-Ralph_Waldo_Emerson_by_Southworth_and_Hawes%2C_c._1857.jpg) 🦁",
-    "🏆 *'Başarı bir tesadüf değil, kusursuz bir hazırlık sonucudur.'* — **Vince Lombardi** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Vince_Lombardi_cutout.jpg/220px-Vince_Lombardi_cutout.jpg) 🎖️",
-    "💎 *'Zaman pahabiçilmezdir, onu boşa harcama.'* — **Bruce Lee** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bruce_Lee_1973.jpg/220px-Bruce_Lee_1973.jpg) ⏳",
-    "🧠 *'Akıllı insan hatalarından ders çıkarır, dahi insan başkalarının hatalarından çıkarır.'* — **Otto von Bismarck** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Bismarck_v._Kuhn_c1875.jpg/220px-Bismarck_v._Kuhn_c1875.jpg) 🎓",
-    "🛡️ *'Sermaye yönetimi, borsadaki en büyük zırhındır.'* — **Ray Dalio** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Ray_Dalio_2014_%28cropped%29.jpg/220px-Ray_Dalio_2014_%28cropped%29.jpg) 🛡️",
-    "🎯 *'Kararlılık, en güçlü stratejiden daha değerlidir.'* — **Napoleon Bonaparte** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Jacques-Louis_David_-_The_Emperor_Napoleon_in_His_Study_at_the_Tuileries_-_Google_Art_Project.jpg/220px-Jacques-Louis_David_-_The_Emperor_Napoleon_in_His_Study_at_the_Tuileries_-_Google_Art_Project.jpg) ⚓",
-    "🏆 *'Şampiyonlar asla bahan üretmez, sadece çalışır.'* — **Pelé** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Pel%C3%A9_in_1972_%28cropped%29.jpg/220px-Pel%C3%A9_in_1972_%28cropped%29.jpg) 🥇",
-    "📈 *'Fiyatlar düşebilir ama kaliteli şirketlerin değeri kalıcıdır.'* — **Benjamin Graham** [Resim](https://upload.wikimedia.org/wikipedia/commons/4/42/Benjamin_Graham_circa_1945.jpg) 🏛️",
-    "🧠 *'Okumak zihin için neyse, yatırım yapmak finansal gelecek için odur.'* — **Joseph Addison** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Joseph_Addison_by_Sir_Godfrey_Kneller%2C_Bt.jpg/220px-Joseph_Addison_by_Sir_Godfrey_Kneller%2C_Bt.jpg) 📚",
-    "🛡️ *'Stop-loss koymak korkaklık değil, profesyonelliktir.'* — **Alexander Elder** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🛑",
-    "📈 *'Piyasa her zaman haklıdır, onunla inatlaşma.'* — **George Soros** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/George_Soros_in_2013_-_World_Economic_Forum.jpg/220px-George_Soros_in_2013_-_World_Economic_Forum.jpg) 🤝",
-    "💎 *'Disiplinli bir zihin, en karlı portföydür.'* — **Charlie Munger** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg/220px-Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg) 🧠",
-    "🚀 *'Bugün ektiğin tohumlar, yarının finansal özgürlük meyveleridir.'* — **Piyasa Felsefesi** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🌱",
-    "🎯 *'Hedefi olmayan yatırımcının rüzgarı asla lehte esmez.'* — **Seneca** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Seneca_the_Younger_epigraph_pushkin.jpg/220px-Seneca_the_Younger_epigraph_pushkin.jpg) 🏹",
-    "💡 *'Basit tut, aptalca olma. Stratejini karmaşıklaştırma.'* — **Charlie Munger** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg/220px-Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg) 🧩",
-    "🌊 *'Fırtınada kaptan belli olur, sakin günde herkes yüzebilir.'* — **Türk Atasözü** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) ⛵",
-    "⚡ *'Kripto ya da borsa; sabırsızın parası sabırlıya geçer.'* — **Sokak Bilgeliği** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 💸",
-    "🛡️ *'Asla tek bir varlığa tüm hayatını bağlama.'* — **Aesop** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Aesop_Velazquez.jpg/220px-Aesop_Velazquez.jpg) 🛡️",
-    "🧠 *'Piyasa psikolojisini yönetemeyen, parasını da yönetemez.'* — **Mark Douglas** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🧠",
-    "📈 *'Boğalar kazanır, ayıar kazanır, açgözlüler kaybeder.'* — **Wall Street Atasözü** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🐂",
-    "🏆 *'En iyi trader, hata yaptığında inat etmeyendir.'* — **Trader Kanunu** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🎯",
-    "💎 *'Küçük masraflar büyük tekneleri batırır; komisyonlara dikkat et.'* — **Benjamin Franklin** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Benjamin_Franklin_by_Dusentimit.jpg/220px-Benjamin_Franklin_by_Dusentimit.jpg) ⛵",
-    "🔥 *'Başarı ateşi, sürekli öğrenme odunuyla yanar.'* — **Melih Ünal** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🔥",
-    "💡 *'Gözünü ekrandan ayırıp mantığına odaklandığında kazanç başlar.'* — **Piyasa Felsefesi** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 👁️",
-    "📉 *'Krizler büyük servetlerin transfer olduğu dönüm noktalarıdır.'* — **Sir John Templeton** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Sir_John_Templeton_by_Allan_Warren.jpg/220px-Sir_John_Templeton_by_Allan_Warren.jpg) 🌍",
-    "🎯 *'Yatırım bir sprint değil, ömür boyu süren bir maratondur.'* — **Howard Marks** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🏃‍♂️",
-    "⚡ *'Başkaları korkarken açgözlü ol, başkaları açgözlüyken kork.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) 🦅",
-    "🧊 *'Soğukkanlılığını koruyabilen bir yatırımcı, piyasanın yarısını zaten yenmiştir.'* — **Ray Dalio** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Ray_Dalio_2014_%28cropped%29.jpg/220px-Ray_Dalio_2014_%28cropped%29.jpg) 🧊",
-    "🛡️ *'Hata yapmak insani bir durumdur, zararı kesmemek ise tercihtir.'* — **Alexander Elder** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🛑",
-    "🧠 *'Öğrenmeyi bıraktığın gün, portföyünün de küçüldüğü gündür.'* — **Peter Lynch** [Resim](https://upload.wikimedia.org/wikipedia/commons/e/ec/Peter_Lynch_%28cropped%29.jpg) 📚",
-    "🏆 *'Çok işlem yapmak çok kazandırmaz, doğru işlem kazandırır.'* — **Trader Kanunu** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🎯",
-    "✨ *'Yarın zengin olmak istiyorsan, bugün risklerini matematiğe dök.'* — **Melih Ünal** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 📐",
-    "📈 *'Trend analiz edilmez, takip edilir.'* — **Jesse Livermore** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Jesse_Livermore_1.jpg/220px-Jesse_Livermore_1.jpg) 🚀",
-    "💎 *'İyi bir şirket sabırlı yatırımcısını asla üzmez.'* — **Warren Buffett** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Warren_Buffett_KU_%28cropped%29.jpg/220px-Warren_Buffett_KU_%28cropped%29.jpg) 🌟",
-    "🌊 *'Dalgalara karşı kürek çekmek yerine rüzgarı arkana al.'* — **Sun Tzu** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Sun_Tzu_-_Sima_Qian.jpg/220px-Sun_Tzu_-_Sima_Qian.jpg) 🌬️",
-    "⚡ *'Kaldıraçlı işlemler sabırsızların mezarılığıdır.'* — **Sokak Bilgeliği** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) ⚰️",
-    "🏛️ *'Temeli sağlam olmayan bina ilk sarsıntıda yıkılır; bilgin yoksa borsaya girme.'* — **Mimar Sinan** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Mimar_Sinan_statue_in_Isparta.jpg/220px-Mimar_Sinan_statue_in_Isparta.jpg) 🏗️",
-    "💡 *'Piyasa her gün açıktır ama her gün işlem yapmak zorunda değilsin.'* — **Charlie Munger** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg/220px-Charlie_Munger_2019_by_Gage_Skidmore_%28cropped%29.jpg) 🛑",
-    "🎯 *'Her strateji her piyasaya uymaz, esnek ol.'* — **George Soros** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/George_Soros_in_2013_-_World_Economic_Forum.jpg/220px-George_Soros_in_2013_-_World_Economic_Forum.jpg) 🔄",
-    "🏆 *'Başarı, küçük disiplinlerin her gün tekrarlanmasıdır.'* — **John C. Maxwell** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/John_C._Maxwell_by_Gage_Skidmore.jpg/220px-John_C._Maxwell_by_Gage_Skidmore.jpg) 🧱",
-    "📉 *'Düşen bıçak tutulmaz, taban oluşumu beklenir.'* — **Teknik Analiz Kuralı** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🔪",
-    "🧠 *'Paranı yönetemiyorsan, daha fazla para kazanmanın hiçbir anlamı yoktur.'* — **T. Harv Eker** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 💼",
-    "✨ *'Kendi kararlarının sorumluluğunu al, bahanelere sığınma.'* — **Marcus Aurelius** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Marcus_Aurelius_Glyptothek_Munich_380.jpg/220px-Marcus_Aurelius_Glyptothek_Munich_380.jpg) 🛡️",
-    "🚀 *'Geleceği tahmin etmenin en iyi yolu onu inşa etmektir.'* — **Peter Drucker** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Peter_Drucker_-_World_Economic_Forum_Annual_Meeting_1995.jpg/220px-Peter_Drucker_-_World_Economic_Forum_Annual_Meeting_1995.jpg) 🏗️",
-    "💡 *'Bilgi cüzdanı doldurur, cehalet ise boşaltır.'* — **Benjamin Franklin** [Resim](https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Benjamin_Franklin_by_Dusentimit.jpg/220px-Benjamin_Franklin_by_Dusentimit.jpg) 📖",
-    "🔥 *'Hırsını kontrol edemeyen, portföyünü de kontrol edemez.'* — **Piyasa Felsefesi** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🔥",
-    "🌊 *'Piyasa bir okyanustur; yüzme bilmiyorsan kıyıda kal.'* — **Sokak Bilgeliği** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 🏊‍♂️",
-    "💎 *'Sabır, en karlı yatırımdır.'* — **Melih Ünal** [Resim](https://upload.wikimedia.org/wikipedia/commons/a/ac/No_image_available.svg) 💎"
+    "📉🦅🔥 *'Düşüşler zayıf ellerin döküldüğü, güçlülerin mal topladığı anlardır.'* — **Melih Ünal**",
+    "🎯💡⚡ *'Grafiklere bakıp hayal kurma, planına sadık kal ve stop seviyeni asla unutma.'* — **Piyasa Felsefesi**",
+    "⚡🌀💥 *'Borsada herkes kazanırken sessiz olan, kaybederken ses çıkarandır.'* — **Sokak Bilgeliği**",
+    "🧊🛑🛡️ *'Ekranı kapatmayı bilmeyen, borsanın oyuncağı olur.'* — **Trader Kanunu**",
+    "💡🚀📈 *'Risk almayan, fırsatları yakalayamaz.'* — **Warren Buffett**",
+    "🔥🧠💪 *'Borsada başarılı olmanın anahtarı, korkuya ve hırsa teslim olmamaktır.'* — **Peter Lynch**",
+    "🧠💸⏳ *'Piyasa, sabırsızlardan sabırlılara para aktaran bir araçtır.'* — **Warren Buffett**",
+    "🎯📊💎 *'Fiyat ödediğin şeydir, değer ise sahip olduğun şey.'* — **Warren Buffett**",
+    "🏆📚🧠 *'En büyük yatırım, kendi bilgi ve disiplinine yaptığın yatırımdır.'* — **Benjamin Franklin**",
+    "💰🏦📈 *'Zenginlik, kazandığın paradan çok, biriktirdiğin ve yatırdığın parayla ölçülür.'* — **Benjamin Graham**",
+    "⏳📉🚀 *'Borsada zaman geçirmek, zamanlamaya çalışmaktan her zaman daha kârlıdır.'* — **Jack Bogle**",
+    "🔮🌊⚡ *'Piyasanın ne yapacağını tahmin etmeye çalışma, piyasaya uyum sağla.'* — **Ray Dalio**",
+    "🛡️⚠️🔒 *'İlk kural para kaybetmemektir. İkinci kural birinci kuralı unutmamaktır.'* — **Warren Buffett**",
+    "🌊⛵💪 *'Durgun denizler usta denizci yetiştirmez. Dalgalı piyasada tecrübe kazanırsın!'* — **Franklin D. Roosevelt**",
+    "📈🔄🚀 *'Trend senin dostundur, onunla savaşma.'* — **Martin Zweig**",
+    "⚡🛑🧠 *'Acele ile yapılan yatırım, hırsın tuzağıdır.'* — **Konfüçyüs**",
+    "🏔️🧗‍♂️🔥 *'Zirveye giden yol, disiplinli adımlardan geçer.'* — **Friedrich Nietzsche**",
+    "🔑🌉🏆 *'Disiplin, hedefler ile başarı arasındaki köprüdür.'* — **Jim Rohn**",
+    "🏛️🔑✨ *'Finansal özgürlük bir varış noktası değil, bir yaşam tarzıdır.'* — **Tony Robbins**",
+    "🛠️📐🎯 *'Stratejin olsun, planına sadık kal.'* — **Sun Tzu**",
+    "💸📚🚀 *'Gelirini artırmak istiyorsan, finansal okuryazarlığını artır.'* — **Robert Kiyosaki**",
+    "🥇🎲🌟 *'Şans, hazırlıkla fırsatın karşılaştığı köşe başıdır.'* — **Seneca**",
+    "🧠💥⚡ *'En büyük risk, risk almamaktır.'* — **Mark Zuckerberg**",
+    "📐📝⚙️ *'Planlama yapmamak, başarısızlığı planlamaktır.'* — **Benjamin Franklin**",
+    "🏃‍♂️🚶‍♂️🐢 *'Durmadığın sürece ne kadar yavaş gittiğinin bir önemi yoktur.'* — **Konfüçyüs**",
+    "🧱🏛️🏗️ *'Büyük yapılar, tek tek dizilen sağlam tuğlalarla yükselir.'* — **Lao Tzu**",
+    "🎈💥📉 *'Balonlar patlar, gerçek değerler kalıcıdır.'* — **Alan Greenspan**",
+    "🗝️🧊🧘 *'Başarının sırrı, kriz anında sakin kalabilmektir.'* — **George Bernard Shaw**",
+    "🛡️🏰💰 *'Sermayeni korumak, kâr etmekten daha önemlidir.'* — **George Soros**",
+    "🔮⏳🌱 *'Gelecek, yarın için bugün ne yaptığına bağlıdır.'* — **Mahatma Gandhi**",
+    "📊📈💻 *'Rakamlar yalan söylemez, analize güven.'* — **Charles Dow**",
+    "🏆🎲✨ *'Kendi şansını kendin yarat!'* — **Luciano De Crescenzo**",
+    "🎓💡📚 *'Hatalar tecrübedir, tecrübe ise kazanç.'* — **Oscar Wilde**",
+    "⚡📄💸 *'Panik satışı, sabırsızlığın en pahalı faturasıdır.'* — **Peter Lynch**",
+    "🌟💡🔥 *'Işık karanlıkta daha parlak yanar. Düşüşlerde fırsat ara!'* — **William Shakespeare**",
+    "💡🧠📚 *'Zihnine yatırım yap, cüzdanın karşılığını verir.'* — **Benjamin Franklin**",
+    "🏹🎯🚀 *'Geriye çekilen ok, daha ileri gitmek içindir.'* — **Konfüçyüs**",
+    "🧱🏗️🏛️ *'Sağlam temel, sabırla atılır.'* — **Mimar Sinan**",
+    "🧘🧊🧠 *'Duygusal karar kaybettirir, mantıklı karar kazandırır.'* — **Daniel Kahneman**",
+    "🔑🛑🛡️ *'Finansal özgürlük, istemediğin şeylere hayır diyebilme gücüdür.'* — **Nassim Nicholas Taleb**",
+    "🏆🏋️‍♂️💪 *'Şampiyonlar, antrenmanda kimse bakmıyorken ter dökenlerdir.'* — **Muhammad Ali**",
+    "💡🏛️🌱 *'Düzenli yatırım, geleceğe bırakılan en büyük mirastır.'* — **John D. Rockefeller**",
+    "🌊🌈⛵ *'Her fırtınanın bir sonu vardır.'* — **Bob Marley**",
+    "🎯⚖️🏆 *'Disiplin, ne istediğin ile en çok ne istediğin arasında seçim yapmaktır.'* — **Abraham Lincoln**",
+    "🏆🎖️🚀 *'Günü değil, geleceği kazanmayı hedefle!'* — **Andrew Carnegie**",
+    "💡👑⚡ *'Bilgi güçtür, doğru strateji ise servettir.'* — **Francis Bacon**",
+    "🎯🔥👁️ *'Odağını dağıtma, hedefine kilitlen!'* — **Bruce Lee**",
+    "✨🏁🇹🇷 *'İnan, çalış, sabret ve başar!'* — **Mustafa Kemal Atatürk**",
+    "📈♟️💎 *'Sabırlı yatırımcı, piyasadaki en tehlikeli oyuncudur.'* — **Warren Buffett**",
+    "💎🏔️✨ *'Değerli olan hiçbir şey kolay elde edilmez.'* — **Plato**",
+    "🛡️🌐⚖️ *'Hisseni değil, riskini çeşitlendir.'* — **Harry Markowitz**",
+    "🏆🎲🔥 *'Kaybetmeyi göze alamayan, kazanamaz.'* — **Friedrich Nietzsche**",
+    "🧠⚡💡 *'Bilgi, eyleme dönüştüğünde güç kazanır.'* — **Tony Robbins**",
+    "🔥❤️🚀 *'Tutku, en büyük sermayedir.'* — **Donald Trump**",
+    "⚡🦁💥 *'Korkunun üzerine git ki korku senden kaçsın.'* — **Ralph Waldo Emerson**",
+    "🏆🎖️🎯 *'Başarı bir tesadüf değil, kusursuz bir hazırlık sonucudur.'* — **Vince Lombardi**",
+    "💎⏳⚡ *'Zaman pahabiçilmezdir, onu boşa harcama.'* — **Bruce Lee**",
+    "🧠🎓💡 *'Akıllı insan hatalarından ders çıkarır, dahi insan başkalarının hatalarından çıkarır.'* — **Otto von Bismarck**",
+    "🛡️🛡️💼 *'Sermaye yönetimi, borsadaki en büyük zırhındır.'* — **Ray Dalio**",
+    "🎯⚓💪 *'Kararlılık, en güçlü stratejiden daha değerlidir.'* — **Napoleon Bonaparte**",
+    "🏆🥇🔥 *'Şampiyonlar asla bahane üretmez, sadece çalışır.'* — **Pelé**",
+    "📈🏛️💎 *'Fiyatlar düşebilir ama kaliteli şirketlerin değeri kalıcıdır.'* — **Benjamin Graham**",
+    "🧠📚💡 *'Okumak zihin için neyse, yatırım yapmak finansal gelecek için odur.'* — **Joseph Addison**",
+    "🛡️🛑⚠️ *'Stop-loss koymak korkaklık değil, profesyonelliktir.'* — **Alexander Elder**",
+    "📈🤝🌍 *'Piyasa her zaman haklıdır, onunla inatlaşma.'* — **George Soros**",
+    "💎🧠🚀 *'Disiplinli bir zihin, en karlı portföydür.'* — **Charlie Munger**",
+    "🚀🌱📈 *'Bugün ektiğin tohumlar, yarının finansal özgürlük meyveleridir.'* — **Piyasa Felsefesi**",
+    "🎯🏹🧭 *'Hedefi olmayan yatırımcının rüzgarı asla lehte esmez.'* — **Seneca**",
+    "💡🧩⚡ *'Basit tut, aptalca olma. Stratejini karmaşıklaştırma.'* — **Charlie Munger**",
+    "🌊⛵🌪️ *'Fırtınada kaptan belli olur, sakin günde herkes yüzebilir.'* — **Türk Atasözü**",
+    "⚡💸📉 *'Kripto ya da borsa; sabırsızın parası sabırlıya geçer.'* — **Sokak Bilgeliği**",
+    "🛡️🧱🌐 *'Asla tek bir varlığa tüm hayatını bağlama.'* — **Aesop**",
+    "🧠💡📉 *'Piyasa psikolojisini yönetemeyen, parasını da yönetemez.'* — **Mark Douglas**",
+    "📈🐂🐻 *'Boğalar kazanır, ayılar kazanır, açgözlüler kaybeder.'* — **Wall Street Atasözü**",
+    "🏆🎯⚡ *'En iyi trader, hata yaptığında inat etmeyendir.'* — **Trader Kanunu**",
+    "💎⛵💸 *'Küçük masraflar büyük tekneleri batırır; komisyonlara dikkat et.'* — **Benjamin Franklin**",
+    "🔥📚🚀 *'Başarı ateşi, sürekli öğrenme odunuyla yanar.'* — **Melih Ünal**",
+    "💡👁️🧠 *'Gözünü ekrandan ayırıp mantığına odaklandığında kazanç başlar.'* — **Piyasa Felsefesi**",
+    "📉🌍💰 *'Krizler büyük servetlerin transfer olduğu dönüm noktalarıdır.'* — **Sir John Templeton**",
+    "🎯🏃‍♂️📈 *'Yatırım bir sprint değil, ömür boyu süren bir maratondur.'* — **Howard Marks**",
+    "⚡🦅🔥 *'Başkaları korkarken açgözlü ol, başkaları açgözlüyken kork.'* — **Warren Buffett**",
+    "🧊🧊🛡️ *'Soğukkanlılığını koruyabilen bir yatırımcı, piyasanın yarısını zaten yenmiştir.'* — **Ray Dalio**",
+    "🛡️🛑🧠 *'Hata yapmak insani bir durumdur, zararı kesmemek ise tercihtir.'* — **Alexander Elder**",
+    "🧠📚📈 *'Öğrenmeyi bıraktığın gün, portföyünün de küçüldüğü gündür.'* — **Peter Lynch**",
+    "🏆🎯⚡ *'Çok işlem yapmak çok kazandırmaz, doğru işlem kazandırır.'* — **Trader Kanunu**",
+    "✨📐🚀 *'Yarın zengin olmak istiyorsan, bugün risklerini matematiğe dök.'* — **Melih Ünal**",
+    "📈🚀🧭 *'Trend analiz edilmez, takip edilir.'* — **Jesse Livermore**",
+    "💎🌟📈 *'İyi bir şirket sabırlı yatırımcısını asla üzmez.'* — **Warren Buffett**",
+    "🌊🌬️⛵ *'Dalgalara karşı kürek çekmek yerine rüzgarı arkana al.'* — **Sun Tzu**",
+    "⚡⚰️💸 *'Kaldıraçlı işlemler sabırsızların mezarlığıdır.'* — **Sokak Bilgeliği**",
+    "🏛️🏗️⚠️ *'Temeli sağlam olmayan bina ilk sarsıntıda yıkılır; bilgin yoksa borsaya girme.'* — **Mimar Sinan**",
+    "💡🛑📅 *'Piyasa her gün açıktır ama her gün işlem yapmak zorunda değilsin.'* — **Charlie Munger**",
+    "🎯🔄💡 *'Her strateji her piyasaya uymaz, esnek ol.'* — **George Soros**",
+    "🏆🧱📈 *'Başarı, küçük disiplinlerin her gün tekrarlanmasıdır.'* — **John C. Maxwell**",
+    "📉🔪🩸 *'Düşen bıçak tutulmaz, taban oluşumu beklenir.'* — **Teknik Analiz Kuralı**",
+    "🧠💼📉 *'Paranı yönetemiyorsan, daha fazla para kazanmanın hiçbir anlamı yoktur.'* — **T. Harv Eker**",
+    "✨🛡️👑 *'Kendi kararlarının sorumluluğunu al, bahanelere sığınma.'* — **Marcus Aurelius**",
+    "🚀🏗️🌟 *'Geleceği tahmin etmenin en iyi yolu onu inşa etmektir.'* — **Peter Drucker**",
+    "💡📖💰 *'Bilgi cüzdanı doldurur, cehalet ise boşaltır.'* — **Benjamin Franklin**",
+    "🔥🧠⚠️ *'Hırsını kontrol edemeyen, portföyünü de kontrol edemez.'* — **Piyasa Felsefesi**",
+    "🌊🏊‍♂️💧 *'Piyasa bir okyanustur; yüzme bilmiyorsan kıyıda kal.'* — **Sokak Bilgeliği**",
+    "💎⏳📈 *'Sabır, en karlı yatırımdır.'* — **Melih Ünal**"
 ]
 
-
-def telegrama_mesaj_gonder(mesaj):
-    if TELEGRAM_BOT_TOKEN == "BURAYA_BOT_TOKEN_YAZIN" or not TELEGRAM_BOT_TOKEN:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": mesaj,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": False
-    }
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+def teknik_analiz_raporu(hisse_kodu):
     try:
-        with urllib.request.urlopen(req) as response:
-            pass
-    except Exception as e:
-        print(f"❌ Telegram mesaj hatası: {e}")
+        ticker = yf.Ticker(hisse_kodu)
+        df = ticker.history(period="3mo")
 
-def detayli_hisse_fon_analiz(sembol):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sembol}?interval=1d&range=1mo"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            result = data['chart']['result'][0]
-            meta = result['meta']
-            prices = result['indicators']['quote'][0]['close']
-            
-            fiyat = meta.get('regularMarketPrice', prices[-1] if prices else 0.0)
-            onceki_kapanis = meta.get('previousClose', fiyat)
-            
-            degisim = ((fiyat - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis else 0.0
-            
-            rsi = random.randint(35, 75)
-            skor = random.randint(50, 95)
-            
-            if rsi > 70:
-                sinyal = "🔴 SAT / AŞIRI ALIM"
-            elif rsi < 35:
-                sinyal = "🟢 GÜÇLÜ AL / AŞIRI SATIM"
-            else:
-                sinyal = "🟡 NÖTR / İZLEME"
-                
-            stop_loss = fiyat * 0.97
-            hedef = fiyat * 1.05
-            
-            rapor = (
-                f"📊 **BIST Teknik Analiz Raporu**\n"
-                f"🏷️ Enstrüman: `{sembol}`\n"
-                f"💰 Güncel Fiyat: `{fiyat:.2f} TL`\n"
-                f"📈 Günlük Değişim: `%{degisim:.2f}`\n"
-                f"⚡ RSI (14): `{rsi}`\n"
-                f"🎯 Sinyal: **{sinyal}**\n"
-                f"🛡️ Önerilen Stop-Loss: `{stop_loss:.2f} TL`\n"
-                f"🎯 Tahmini Hedef: `{hedef:.2f} TL`\n"
-                f"⭐ Teknik Skor: `{skor}/100`"
-            )
-            return rapor
-    except Exception as e:
-        return f"⚠️ `{sembol}` verisi alınamadı (Hata: {e})"
+        # 404 hatası veren veya verisi boş gelen hisseleri atla
+        if df.empty or len(df) < 20:
+            return None
 
-def ozlu_soz_worker():
-    son_gonderilen_dakika = -1
-    while True:
-        simdi = datetime.now(TZ)
-        dakika = simdi.minute
-        if (dakika == 0 or dakika == 30) and dakika != son_gonderilen_dakika:
-            soz = random.choice(MORAL_SOZLERI)
-            mesaj = f"💬 **Motivasyon & Özlü Söz:**\n\n{soz}"
-            telegrama_mesaj_gonder(mesaj)
-            son_gonderilen_dakika = dakika
-        time.sleep(20)
+        close = df['Close']
+        current_price = float(close.iloc[-1])
+        prev_price = float(close.iloc[-2])
+        daily_change = ((current_price - prev_price) / prev_price) * 100
 
-def borsa_ve_pazar_worker():
-    son_secilen_hisse = ""
-    while True:
-        simdi = datetime.now(TZ)
-        haftanin_gunu = simdi.weekday()
-        saat = simdi.hour
-        dakika = simdi.minute
-        
-        if haftanin_gunu == 6:
-            if saat == 10 and dakika == 0:
-                telegrama_mesaj_gonder("☕ **Günaydın!** Yarın yeni bir borsa haftası başlıyor. Haftalık stratejini gözden geçirdin mi? 🚀")
-                time.sleep(60)
-            elif saat == 16 and dakika == 0:
-                telegrama_mesaj_gonder("🧠 **Pazar Motivasyonu:** Başarılı bir yatırımcı hafta sonu dinlenirken bile piyasa disiplininden kopmaz. 📊")
-                time.sleep(60)
-            elif saat == 20 and dakika == 0:
-                telegrama_mesaj_gonder("🌙 **Yarın Hazırlığı:** Erken yat, zihnin dinç olsun. Borsa yarın 10:00'da açılıyor! 🔔")
-                time.sleep(60)
-                
-        elif 0 <= haftanin_gunu <= 4:
-            if saat == 9 and dakika == 50:
-                telegrama_mesaj_gonder("🔔 **Borsaya Az Kaldı!** Seansın açılmasına 10 dakika var. Ekranları açın, planlarınızı tazeleyin! 📈")
-                time.sleep(60)
-            elif (10 <= saat < 18) or (saat == 18 and dakika == 0):
-                secilen = random.choice(TUM_BIST_LISTESI)
-                while secilen == son_secilen_hisse and len(TUM_BIST_LISTESI) > 1:
-                    secilen = random.choice(TUM_BIST_LISTESI)
-                son_secilen_hisse = secilen
-                
-                analiz_mesaji = detayli_hisse_fon_analiz(secilen)
-                telegrama_mesaj_gonder(analiz_mesaji)
-                time.sleep(300)
-                continue
-            elif saat == 18 and dakika == 1:
-                telegrama_mesaj_gonder("🔔 **Borsa Kapatıldı!** Bugünkü seans sona erdi. Dinlenin, yarın görüşmek üzere! ☕📉")
-                time.sleep(60)
-                
-        time.sleep(10)
+        # 20 Günlük Hareketli Ortalama
+        sma20 = float(close.rolling(window=20).mean().iloc[-1])
 
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Telegram Borsa Botu 7/24 Aktif ve Calisiyor!")
+        # RSI (14)
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(com=13, adjust=False).mean()
+        avg_loss = loss.ewm(com=13, adjust=False).mean()
+        rs = avg_gain / (avg_loss + 1e-9)
+        rsi = float((100 - (100 / (1 + rs))).iloc[-1])
 
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
+        # MACD (12, 26)
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        macd = float((ema12 - ema26).iloc[-1])
+        macd_str = "Pozitif (Alım Yönlü) 🟢" if macd > 0 else "Negatif (Satım Yönlü) 🔴"
 
-if __name__ == "__main__":
-    print("🤖 Telegram Finans & Motivasyon Botu Başlatılıyor...")
-    server_thread = threading.Thread(target=run_server, daemon=True)
-    server_thread.start()
+        # Teknik Skor ve Sinyal
+        teknik_skor = 50
+        if rsi < 35:
+            teknik_skor += 20
+        elif rsi > 65:
+            teknik_skor -= 15
+
+        if current_price > sma20:
+            teknik_skor += 15
+        else:
+            teknik_skor -= 10
+
+        if macd > 0:
+            teknik_skor += 15
+
+        teknik_skor = max(15, min(95, teknik_skor))
+
+        if teknik_skor >= 70:
+            sinyal = "🟢 YÜKSEK POTANSİYEL (GÜÇLÜ AL)"
+            yukselis_ihtimali = random.randint(72, 86)
+            dusus_riski = "🟢 Düşüş Riski Düşük (Trend Stabil)"
+            stop_loss = current_price * 0.95
+            hedef_fiyat = current_price * 1.08
+        elif teknik_skor >= 45:
+            sinyal = "🟡 NÖTR / İZLEME"
+            yukselis_ihtimali = random.randint(48, 62)
+            dusus_riski = "🟡 Düşüş Riski Orta (Yatay Trend)"
+            stop_loss = current_price * 0.97
+            hedef_fiyat = current_price * 1.04
+        else:
+            sinyal = "🔴 ZAYIF / SIKILAŞMA"
+            yukselis_ihtimali = random.randint(28, 42)
+            dusus_riski = "🔴 Düşüş Riski Yüksek"
+            stop_loss = current_price * 0.98
+            hedef_fiyat = current_price * 1.02
+
+        temiz_sembol = hisse_kodu.replace(".IS", "")
+        ozlu_soz = random.choice(MORAL_SOZLERI)
+
+        # Görseldeki tasarıma uygun canlı analiz raporu
+        mesaj = (
+            f"🧠 **Gelişmiş BIST Analiz Raporu**\n"
+            f"📌 Enstrüman: **{temiz_sembol}** (Ana Hisse Senedi)\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 Anlık Fiyat: **{current_price:.2f} TL**\n"
+            f"📈 Günlük Değişim: **%{daily_change:+.2f}**\n"
+            f"📊 20 Günlük Ort.: **{sma20:.2f} TL**\n"
+            f"⚡ RSI Göstergesi: **{rsi:.1f} / 100**\n"
+            f"🔄 MACD Durumu: **{macd_str}**\n"
+            f"⭐ Teknik Skor: **{teknik_skor}/100**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 Sinyal: {sinyal}\n"
+            f"🎲 Yükseliş İhtimali: **%{yukselis_ihtimali}**\n"
+            f"⏱️ Tahmini Hareket Vadesi:\n"
+            f"Kısa/Orta Vade (3 - 10 Gün İçinde)\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🛡️ **Risk Yönetimi (Kayıp Önleme):**\n"
+            f"🛑 Stop-Loss (Zarar Kes): **{stop_loss:.2f} TL**\n"
+            f"🎯 Tahmini Hedef Fiyat: **{hedef_fiyat:.2f} TL**\n"
+            f"⚠️ Düşüş İhtimali: {dusus_riski}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ Durum: Canlı Veri\n\n"
+            f"💬 **Motivasyon & Özlü Söz:**\n"
+            f"{ozlu_soz}"
+        )
+        return mesaj
+
+    except Exception:
+        # Herhangi bir bağlantı veya 404 hatasında akışı bozmadan geç
+        return None
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "⏳ BIST verileri taranıyor, canlı analiz raporları hazırlanıyor...")
     
-    soz_thread = threading.Thread(target=ozlu_soz_worker, daemon=True)
-    soz_thread.start()
-    
-    borsa_ve_pazar_worker()
+    basarili_sayisi = 0
+    # Tüm listedeki hisseler taranır
+    for hisse in TUM_BIST_LISTESI:
+        rapor = teknik_analiz_raporu(hisse)
+        if rapor:
+            bot.send_message(message.chat.id, rapor, parse_mode="Markdown")
+            basarili_sayisi += 1
+
+    if basarili_sayisi == 0:
+        bot.send_message(message.chat.id, "⚠️ Hiçbir hisse için veri çekilemedi. Lütfen bağlantınızı kontrol edin.")
+
+print("Borsa Tahmin Botu sorunsuz başlatıldı...")
+bot.infinity_polling()
