@@ -8,10 +8,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "BURAYA_BOT_TOKEN_YAZIN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "BURAYA_CHAT_ID_YAZIN")
+TELEGRAM_BOT_TOKEN = "8885666495:AAHG8OPjLPp1LdYO13xp7pW8dRpM2StTU-U"
+TELEGRAM_CHAT_ID = "8766074185"
 
 TZ = ZoneInfo("Europe/Istanbul")
+
 
 TUM_BIST_LISTESI = [
     "ACSEL.IS", "ADEL.IS", "ADESE.IS", "ADGYO.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", "AGHOL.IS", "AGROT.IS", "AGYO.IS",
